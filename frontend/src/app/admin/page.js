@@ -1,69 +1,56 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
-import { io } from "socket.io-client";
-
-const BACKEND_URL = "http://localhost:3001";
+import { useEffect, useState } from "react";
 
 export default function AdminDashboard() {
-  const socketRef = useRef(null);
-  
   const [orders, setOrders] = useState([]);
   const [products, setProducts] = useState([]);
   const [stats, setStats] = useState({});
   const [notifications, setNotifications] = useState([]);
   const [currentTab, setCurrentTab] = useState("dashboard");
-  const [newProduct, setNewProduct] = useState({ name: '', category: 'Ana Yemekler', price: '', desc: '', image: '' });
+  const [newProduct, setNewProduct] = useState({ name: '', category: '', price: '', desc: '', image: '' });
   const [theme, setTheme] = useState("dark");
   const [settings, setSettings] = useState({ businessName: '', address: '', instagram: '', wifi: '', isOpen: true });
 
+  const fetchDb = async () => {
+    try {
+      const res = await fetch('/api/sync');
+      const data = await res.json();
+      setProducts(data.products || []);
+      setSettings(data.settings || { isOpen: true });
+      setOrders(data.orders || []);
+      setStats(data.clicks || {});
+      
+      if (data.notifications && data.notifications.length > 0) {
+        data.notifications.forEach(n => {
+          if (!notifications.find(existing => existing.id === n.id)) {
+            addNotification(n.msg, n.id);
+          }
+        });
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const dispatchAction = async (action, payload) => {
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, payload })
+      });
+      const data = await res.json();
+      setProducts(data.products || []);
+      setSettings(data.settings || { isOpen: true });
+      setOrders(data.orders || []);
+      setStats(data.clicks || {});
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
-    // Initial fetches
-    Promise.all([
-      fetch(`${BACKEND_URL}/api/products`).then(r => r.json()),
-      fetch(`${BACKEND_URL}/api/orders`).then(r => r.json()),
-      fetch(`${BACKEND_URL}/api/stats`).then(r => r.json()),
-      fetch(`${BACKEND_URL}/api/settings`).then(r => r.json())
-    ]).then(([productsData, ordersData, statsData, settingsData]) => {
-      setProducts(productsData);
-      setOrders(ordersData);
-      setStats(statsData);
-      setSettings(settingsData);
-    }).catch(err => console.error("Error fetching data:", err));
-
-    // Socket setup
-    const newSocket = io(BACKEND_URL);
-    socketRef.current = newSocket;
-
-    newSocket.on("waiter_called", (data) => {
-      addNotification(`🛎️ Masa ${data.tableId} garson çağırıyor!`);
-    });
-
-    newSocket.on("order_received", (order) => {
-      setOrders(prev => [...prev, order]);
-      addNotification(`🛍️ Masa ${order.tableId} sipariş verdi! (${order.total}₺)`);
-    });
-
-    newSocket.on("order_updated", (updatedOrder) => {
-      setOrders(prev => prev.map(o => o.id === updatedOrder.id ? updatedOrder : o));
-    });
-
-    newSocket.on("stats_updated", (newStats) => {
-      setStats(newStats);
-    });
-
-    newSocket.on("settings_updated", (updatedSettings) => {
-      setSettings(updatedSettings);
-    });
-
-    newSocket.on("day_ended", () => {
-      setOrders([]);
-      setStats({});
-    });
-
-    newSocket.on("menu_updated", (updatedProducts) => {
-      setProducts(updatedProducts);
-    });
+    fetchDb();
+    const interval = setInterval(fetchDb, 3000);
 
     const savedTheme = localStorage.getItem("theme");
     if (savedTheme) {
@@ -73,17 +60,15 @@ export default function AdminDashboard() {
       document.documentElement.setAttribute("data-theme", "dark");
     }
 
-    return () => {
-      if (socketRef.current) socketRef.current.disconnect();
-    };
-  }, []);
+    return () => clearInterval(interval);
+  }, [notifications]);
 
-  const addNotification = (msg) => {
-    const id = Date.now();
+  const addNotification = (msg, id = Date.now()) => {
     setNotifications(prev => [...prev, { id, msg }]);
     setTimeout(() => {
       setNotifications(prev => prev.filter(n => n.id !== id));
-    }, 5000); 
+      dispatchAction('CLEAR_NOTIFICATION', id);
+    }, 6000); 
   };
 
   const toggleTheme = () => {
@@ -94,45 +79,35 @@ export default function AdminDashboard() {
   };
 
   const markComplete = (orderId) => {
-    if (socketRef.current) {
-      socketRef.current.emit("complete_order", { orderId });
-    }
+    dispatchAction('COMPLETE_ORDER', orderId);
   };
 
   const handleAddProduct = async (e) => {
     e.preventDefault();
-    await fetch(`${BACKEND_URL}/api/products`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newProduct)
-    });
-    setNewProduct({ name: '', category: 'Ana Yemekler', price: '', desc: '', image: '' });
+    await dispatchAction('ADD_PRODUCT', newProduct);
+    setNewProduct({ name: '', category: '', price: '', desc: '', image: '' });
     addNotification('✅ Yeni ürün eklendi');
   };
 
   const handleDeleteProduct = async (id) => {
-    await fetch(`${BACKEND_URL}/api/products/${id}`, { method: 'DELETE' });
+    await dispatchAction('DELETE_PRODUCT', id);
     addNotification('🗑️ Ürün menüden kaldırıldı');
   };
 
   const handleSaveSettings = async (e) => {
     e.preventDefault();
-    await fetch(`${BACKEND_URL}/api/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings)
-    });
+    await dispatchAction('UPDATE_SETTINGS', settings);
     addNotification('✅ Ayarlar güncellendi');
   };
 
   const handleStartDay = async () => {
-    await fetch(`${BACKEND_URL}/api/start-day`, { method: 'POST' });
+    await dispatchAction('START_DAY');
     addNotification('☀️ Gün başlatıldı. Sipariş alımına açık!');
   };
 
   const handleEndDay = async () => {
-    if (confirm("Günü bitirmek istediğinize emin misiniz? Tüm siparişler ve tıklanma istatistikleri sıfırlanacak.")) {
-      await fetch(`${BACKEND_URL}/api/end-day`, { method: 'POST' });
+    if (confirm("Günü bitirmek istediğinize emin misiniz? Tüm siparişler ve istatistikler sıfırlanacak.")) {
+      await dispatchAction('END_DAY');
       addNotification('🌙 Gün bitirildi. Sipariş alımı kapatıldı.');
     }
   };
@@ -163,7 +138,7 @@ export default function AdminDashboard() {
               </div>
               <div style={{ display: 'flex', gap: '12px' }}>
                 {!settings.isOpen ? (
-                  <button className="btn btn-primary" onClick={handleStartDay} style={{ background: 'var(--success)' }}>
+                  <button className="btn btn-primary" onClick={handleStartDay} style={{ background: 'var(--success)', border: 'none' }}>
                     ☀️ Günü Başlat (Satışa Aç)
                   </button>
                 ) : (
@@ -187,7 +162,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
               <div className="glass-panel stat-card">
-                <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: '600', textTransform: 'uppercase' }}>Çekim Gücü (Tık)</div>
+                <div style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', fontWeight: '600', textTransform: 'uppercase' }}>Müşteri İlgisi (Tık)</div>
                 <div className="stat-value">{Object.values(stats).reduce((a, b) => a + b, 0)}</div>
               </div>
               <div className="glass-panel stat-card">
@@ -207,11 +182,11 @@ export default function AdminDashboard() {
                   Bekleyen Siparişler
                 </h2>
                 {!settings.isOpen ? (
-                  <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--card-bg)', borderRadius: '16px' }}>
-                    Kapalıyız. İşlem alabilmek için Günü Başlatın.
+                  <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--card-bg)', borderRadius: '16px', border: '1px solid var(--card-border)' }}>
+                    Kapalıyız. Bekleyen sipariş yok.
                   </div>
                 ) : orders.filter(o => o.status === 'bekliyor').length === 0 ? (
-                  <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--card-bg)', borderRadius: '16px' }}>
+                  <div style={{ padding: '32px', textAlign: 'center', color: 'var(--text-secondary)', background: 'var(--card-bg)', borderRadius: '16px', border: '1px solid var(--card-border)' }}>
                     🎉 Bekleyen sipariş yok. Harika iş çıkarıyorsun!
                   </div>
                 ) : (
@@ -248,12 +223,12 @@ export default function AdminDashboard() {
                 </h2>
                 <div className="glass-panel" style={{ padding: '24px' }}>
                   <p style={{ color: 'var(--text-secondary)', marginBottom: '24px', fontSize: '0.9rem' }}>
-                    Hangi ürünün menüde ne kadar süre incelendiğini anlık takip edin.
+                    Müşterilerin en çok incelediği ürünlerin anlık tıklanma oranları.
                   </p>
                   
                   {products.sort((a, b) => (stats[b.id] || 0) - (stats[a.id] || 0)).map((product) => {
                     const clickCount = stats[product.id] || 0;
-                    if (clickCount === 0) return null; // Only show clicked items
+                    if (clickCount === 0) return null; // Show clicked only
                     const maxClicks = Math.max(...Object.values(stats), 1);
                     const percent = (clickCount / maxClicks) * 100;
 
@@ -263,7 +238,7 @@ export default function AdminDashboard() {
                           <span>{product.name}</span>
                           <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{clickCount} k.</span>
                         </div>
-                        <div style={{ background: 'var(--card-border)', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
+                        <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
                           <div style={{ 
                             background: 'var(--text-primary)',
                             height: '100%', 
@@ -304,7 +279,7 @@ export default function AdminDashboard() {
                 <h2 style={{ fontSize: '1.25rem', marginBottom: '20px' }}>Aktif Menü</h2>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                   {products.map(p => (
-                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-color)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--card-border)' }}>
+                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--card-bg)', padding: '12px 16px', borderRadius: '8px', border: '1px solid var(--card-border)' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                         {p.image && <img src={p.image} alt={p.name} style={{ width: '48px', height: '48px', objectFit: 'cover', borderRadius: '6px' }} />}
                         <div>

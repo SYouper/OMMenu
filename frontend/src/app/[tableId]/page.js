@@ -2,13 +2,9 @@
 
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
-import { io } from "socket.io-client";
-
-const BACKEND_URL = "http://localhost:3001";
 
 export default function CustomerMenu() {
   const { tableId } = useParams();
-  const socketRef = useRef(null);
   
   const [products, setProducts] = useState([]);
   const [settings, setSettings] = useState({ 
@@ -22,27 +18,34 @@ export default function CustomerMenu() {
   const [searchQuery, setSearchQuery] = useState("");
   const [theme, setTheme] = useState("dark"); // Default to dark for sleek pro look
 
+  // Sync with API
+  const fetchDb = async () => {
+    try {
+      const res = await fetch('/api/sync');
+      const data = await res.json();
+      setProducts(data.products || []);
+      setSettings(data.settings || { isOpen: true });
+    } catch (e) { console.error(e); }
+  };
+
+  const dispatchAction = async (action, payload) => {
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, payload })
+      });
+      const data = await res.json();
+      setProducts(data.products || []);
+      setSettings(data.settings || { isOpen: true });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
-    // Initial fetches
-    Promise.all([
-      fetch(`${BACKEND_URL}/api/products`).then(r => r.json()),
-      fetch(`${BACKEND_URL}/api/settings`).then(r => r.json())
-    ]).then(([productsData, settingsData]) => {
-      setProducts(productsData);
-      setSettings(settingsData);
-    }).catch(err => console.error(err));
-
-    // Initialize Socket
-    const newSocket = io(BACKEND_URL);
-    socketRef.current = newSocket;
-
-    newSocket.on("menu_updated", (updatedProducts) => {
-      setProducts(updatedProducts);
-    });
-
-    newSocket.on("settings_updated", (updatedSettings) => {
-      setSettings(updatedSettings);
-    });
+    fetchDb();
+    const interval = setInterval(fetchDb, 3000); // Poll every 3 seconds for updates
 
     // Load theme
     const savedTheme = localStorage.getItem("theme");
@@ -53,9 +56,7 @@ export default function CustomerMenu() {
       document.documentElement.setAttribute("data-theme", "dark");
     }
 
-    return () => {
-      if (socketRef.current) socketRef.current.disconnect();
-    };
+    return () => clearInterval(interval);
   }, []);
 
   const toggleTheme = () => {
@@ -71,9 +72,7 @@ export default function CustomerMenu() {
   };
 
   const recordClick = (productId) => {
-    if (socketRef.current) {
-      socketRef.current.emit("record_click", { productId });
-    }
+    dispatchAction('RECORD_CLICK', productId);
   };
 
   const addToCart = (product) => {
@@ -93,27 +92,23 @@ export default function CustomerMenu() {
   };
 
   const callWaiter = () => {
-    if (socketRef.current) {
-      socketRef.current.emit("call_waiter", { tableId });
-      showToast("Garson çağrıldı!");
-    }
+    dispatchAction('CALL_WAITER', tableId);
+    showToast("Garson çağrıldı!");
   };
 
   const placeOrder = () => {
     if (cart.length === 0) return;
     
-    if (socketRef.current) {
-      socketRef.current.emit("new_order", {
-        tableId,
-        items: cart,
-        total: getCartTotal()
-      });
-      
-      setCart([]);
-      setIsCartOpen(false);
-      setIsConfirmed(false);
-      showToast("Siparişiniz alındı.");
-    }
+    dispatchAction('NEW_ORDER', {
+      tableId,
+      items: cart,
+      total: getCartTotal()
+    });
+    
+    setCart([]);
+    setIsCartOpen(false);
+    setIsConfirmed(false);
+    showToast("Siparişiniz alındı.");
   };
 
   // Prevent ordering if closed
@@ -205,7 +200,7 @@ export default function CustomerMenu() {
         <>
           {!selectedCategory ? (
             <div>
-              {/* Category Toggles (Optional horizontal scroll) */}
+              {/* Category Toggles */}
               <div className="category-tab-bar">
                 <button className="category-tab active">Tümü</button>
                 {Object.keys(groupedProducts).map(cat => (
@@ -325,25 +320,24 @@ export default function CustomerMenu() {
         </div>
       )}
 
-      {/* Desktop Header Actions overlayed to bottom for ease if needed: Actually no, wait. We have the Mobile Bottom Nav. Let's rely on that. */}
       {/* Mobile Bottom Navigation */}
       <nav className="mobile-bottom-nav">
         <button className="mobile-nav-btn" onClick={() => { setSelectedCategory(null); setSearchQuery(''); }}>
           <span style={{ fontSize: '1.2rem', marginBottom: '4px' }}>☰</span>
-          Menu
+          Menü
         </button>
         <button className="mobile-nav-btn" onClick={callWaiter}>
           <span style={{ fontSize: '1.2rem', marginBottom: '4px' }}>🔔</span>
-          Service
+          Garson
         </button>
         <button className="mobile-nav-btn" onClick={() => setIsCartOpen(true)} style={{ position: 'relative' }}>
           <span style={{ fontSize: '1.2rem', marginBottom: '4px' }}>🛒</span>
-          Cart
+          Sepet
           {cart.length > 0 && <span className="cart-badge">{cart.length}</span>}
         </button>
       </nav>
       
-      {/* Fallback floating button for desktop if bottom bar is hidden */}
+      {/* Desktop Quick Actions */}
       <div className="desktop-header-actions" style={{ position: 'fixed', bottom: '30px', right: '30px', display: 'flex', gap: '16px', zIndex: 100 }}>
         <button className="btn btn-primary" onClick={() => setIsCartOpen(true)} style={{ padding: '16px 24px', borderRadius: '50px', boxShadow: 'var(--shadow-md)' }}>
           🛒 Sepet {cart.length > 0 && `(${cart.length})`}
