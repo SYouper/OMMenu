@@ -23,20 +23,29 @@ export default function CustomerMenu() {
   const fetchDb = async () => {
     try {
       const res = await fetch('/api/sync');
-      const data = await res.json();
+      const cloudDb = await res.json();
 
-      if (fullDbRef.current && data.lastModified < fullDbRef.current.lastModified) {
+      const localDbStr = localStorage.getItem('ommenu_db_admin');
+      const localDb = localDbStr ? JSON.parse(localDbStr) : null;
+
+      const cloudTime = cloudDb?.lastModified || 0;
+      const localTime = localDb?.lastModified || 0;
+
+      const mostRecentDb = localTime > cloudTime ? localDb : cloudDb;
+
+      fullDbRef.current = mostRecentDb;
+      localStorage.setItem('ommenu_db_admin', JSON.stringify(mostRecentDb));
+
+      if (mostRecentDb === localDb && localTime > cloudTime) {
         await fetch('/api/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'OVERWRITE_DB', payload: fullDbRef.current })
+          body: JSON.stringify({ action: 'OVERWRITE_DB', payload: mostRecentDb })
         });
-        return;
       }
-      fullDbRef.current = data;
 
-      setProducts(data.products || []);
-      setSettings(data.settings || { isOpen: true });
+      setProducts(mostRecentDb.products || []);
+      setSettings(mostRecentDb.settings || { isOpen: true });
     } catch (e) { console.error(e); }
   };
 
@@ -49,6 +58,7 @@ export default function CustomerMenu() {
       });
       const data = await res.json();
       fullDbRef.current = data;
+      localStorage.setItem('ommenu_db_admin', JSON.stringify(data));
       setProducts(data.products || []);
       setSettings(data.settings || { isOpen: true });
     } catch (e) {

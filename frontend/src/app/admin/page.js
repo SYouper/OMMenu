@@ -16,18 +16,30 @@ export default function AdminDashboard() {
   const fetchDb = async () => {
     try {
       const res = await fetch('/api/sync');
-      const data = await res.json();
-      
-      if (fullDbRef.current && data.lastModified < fullDbRef.current.lastModified) {
+      const cloudDb = await res.json();
+
+      const localDbStr = localStorage.getItem('ommenu_db_admin');
+      const localDb = localDbStr ? JSON.parse(localDbStr) : null;
+
+      // Ensure we compare valid numbers. If cold lambda, cloudDb.lastModified is 0.
+      const cloudTime = cloudDb?.lastModified || 0;
+      const localTime = localDb?.lastModified || 0;
+
+      const mostRecentDb = localTime > cloudTime ? localDb : cloudDb;
+
+      fullDbRef.current = mostRecentDb;
+      localStorage.setItem('ommenu_db_admin', JSON.stringify(mostRecentDb));
+
+      // If local storage was newer than the lambda we hit, override the lambda immediately!
+      if (mostRecentDb === localDb && localTime > cloudTime) {
         await fetch('/api/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'OVERWRITE_DB', payload: fullDbRef.current })
+          body: JSON.stringify({ action: 'OVERWRITE_DB', payload: mostRecentDb })
         });
-        return;
       }
-      fullDbRef.current = data;
 
+      const data = mostRecentDb;
       setProducts(data.products || []);
       setSettings(data.settings || { isOpen: true });
       setOrders(data.orders || []);
@@ -52,6 +64,7 @@ export default function AdminDashboard() {
       });
       const data = await res.json();
       fullDbRef.current = data;
+      localStorage.setItem('ommenu_db_admin', JSON.stringify(data));
       setProducts(data.products || []);
       setSettings(data.settings || { isOpen: true });
       setOrders(data.orders || []);
