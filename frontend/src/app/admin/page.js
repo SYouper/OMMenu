@@ -21,25 +21,37 @@ export default function AdminDashboard() {
       const localDbStr = localStorage.getItem('ommenu_db_admin');
       const localDb = localDbStr ? JSON.parse(localDbStr) : null;
 
-      // Ensure we compare valid numbers. If cold lambda, cloudDb.lastModified is 0.
-      const cloudTime = cloudDb?.lastModified || 0;
-      const localTime = localDb?.lastModified || 0;
+      const cloudTime = cloudDb?.menuVersion || 0;
+      const localTime = localDb?.menuVersion || 0;
+      const cloudOrdersTime = cloudDb?.ordersVersion || 0;
+      const localOrdersTime = localDb?.ordersVersion || 0;
 
-      const mostRecentDb = localTime > cloudTime ? localDb : cloudDb;
+      let mergedDb = { ...cloudDb };
+      
+      if (localTime > cloudTime) {
+        mergedDb.products = localDb.products;
+        mergedDb.settings = localDb.settings;
+        mergedDb.menuVersion = localDb.menuVersion;
+      }
+      if (localOrdersTime > cloudOrdersTime) {
+        mergedDb.orders = localDb.orders;
+        mergedDb.clicks = localDb.clicks;
+        mergedDb.notifications = localDb.notifications;
+        mergedDb.ordersVersion = localDb.ordersVersion;
+      }
 
-      fullDbRef.current = mostRecentDb;
-      localStorage.setItem('ommenu_db_admin', JSON.stringify(mostRecentDb));
+      fullDbRef.current = mergedDb;
+      localStorage.setItem('ommenu_db_admin', JSON.stringify(mergedDb));
 
-      // If local storage was newer than the lambda we hit, override the lambda immediately!
-      if (mostRecentDb === localDb && localTime > cloudTime) {
+      if (mergedDb.menuVersion > cloudTime || mergedDb.ordersVersion > cloudOrdersTime) {
         await fetch('/api/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'OVERWRITE_DB', payload: mostRecentDb })
+          body: JSON.stringify({ action: 'SYNC_MERGE', payload: mergedDb })
         });
       }
 
-      const data = mostRecentDb;
+      const data = mergedDb;
       setProducts(data.products || []);
       setSettings(data.settings || { isOpen: true });
       setOrders(data.orders || []);

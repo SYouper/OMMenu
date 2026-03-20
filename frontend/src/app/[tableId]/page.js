@@ -28,24 +28,38 @@ export default function CustomerMenu() {
       const localDbStr = localStorage.getItem('ommenu_db_admin');
       const localDb = localDbStr ? JSON.parse(localDbStr) : null;
 
-      const cloudTime = cloudDb?.lastModified || 0;
-      const localTime = localDb?.lastModified || 0;
+      const cloudTime = cloudDb?.menuVersion || 0;
+      const localTime = localDb?.menuVersion || 0;
+      const cloudOrdersTime = cloudDb?.ordersVersion || 0;
+      const localOrdersTime = localDb?.ordersVersion || 0;
 
-      const mostRecentDb = localTime > cloudTime ? localDb : cloudDb;
+      let mergedDb = { ...cloudDb };
+      
+      if (localTime > cloudTime) {
+        mergedDb.products = localDb.products;
+        mergedDb.settings = localDb.settings;
+        mergedDb.menuVersion = localDb.menuVersion;
+      }
+      if (localOrdersTime > cloudOrdersTime) {
+        mergedDb.orders = localDb.orders;
+        mergedDb.clicks = localDb.clicks;
+        mergedDb.notifications = localDb.notifications;
+        mergedDb.ordersVersion = localDb.ordersVersion;
+      }
 
-      fullDbRef.current = mostRecentDb;
-      localStorage.setItem('ommenu_db_admin', JSON.stringify(mostRecentDb));
+      fullDbRef.current = mergedDb;
+      localStorage.setItem('ommenu_db_admin', JSON.stringify(mergedDb));
 
-      if (mostRecentDb === localDb && localTime > cloudTime) {
+      if (mergedDb.menuVersion > cloudTime || mergedDb.ordersVersion > cloudOrdersTime) {
         await fetch('/api/sync', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'OVERWRITE_DB', payload: mostRecentDb })
+          body: JSON.stringify({ action: 'SYNC_MERGE', payload: mergedDb })
         });
       }
 
-      setProducts(mostRecentDb.products || []);
-      setSettings(mostRecentDb.settings || { isOpen: true });
+      setProducts(mergedDb.products || []);
+      setSettings(mergedDb.settings || { isOpen: true });
     } catch (e) { console.error(e); }
   };
 
