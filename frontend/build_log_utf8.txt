@@ -1,0 +1,45 @@
+﻿
+> frontend@0.1.0 build
+> next build
+
+Ôû▓ Next.js 16.2.0 (Turbopack)
+
+  Creating an optimized production build ...
+Ô£ô Compiled successfully in 740ms
+  Running TypeScript ...
+  Finished TypeScript in 53ms ...
+  Collecting page data using 8 workers ...
+  Generating static pages using 8 workers (0/5) ...
+node.exe : Error occurred prer
+endering page "/admin". Read m
+ore: https://nextjs.org/docs/m
+essages/prerender-error
+At line:1 char:1
++ & "C:\Program Files\nodejs/n
+ode.exe" "C:\Users\mami1\AppDa
+ta\Roaming\ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~
+    + CategoryInfo          : 
+    NotSpecified: (Error occ  
+  urred ...prerender-error:   
+ String) [], RemoteExcepti    
+on
+    + FullyQualifiedErrorId : 
+    NativeCommandError
+ 
+ReferenceError: useRef is not 
+defined
+    at <unknown> (D:\Projeler\
+OMMenu\frontend\.next\server\c
+hunks\ssr\src_app_admin_page_0
+pl0fum.js:1:418) {
+  digest: '3574527763'
+}
+Export encountered an error on
+ /admin/page: /admin, exiting 
+the build.
+Ô¿» Next.js build worker exite
+d with code: 1 and signal: nul
+l
