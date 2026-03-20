@@ -24,6 +24,8 @@ if (!global.appDb) {
   global.appDb = JSON.parse(JSON.stringify(defaultDb));
 }
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   return NextResponse.json(global.appDb);
 }
