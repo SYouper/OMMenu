@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 
+export const dynamic = 'force-dynamic';
+
 const defaultDb = {
+  lastModified: Date.now(),
   products: [
     { id: 1, name: 'Taze Filtre Kahve', category: 'Kahveler', price: 95, desc: 'Günlük demlenmiş Kolombiya', image: 'https://images.unsplash.com/photo-1544148103-0773bf10d330' },
     { id: 2, name: 'Latte', category: 'Kahveler', price: 120, desc: 'Yumuşak içimli sütlü espresso', image: 'https://images.unsplash.com/photo-1544148103-0773bf10d330' },
@@ -19,12 +22,9 @@ const defaultDb = {
 };
 
 // Global fallback for Vercel serverless functions
-// Allows quick demo state without DB. Resets roughly every hour.
 if (!global.appDb) {
   global.appDb = JSON.parse(JSON.stringify(defaultDb));
 }
-
-export const dynamic = 'force-dynamic';
 
 export async function GET() {
   return NextResponse.json(global.appDb);
@@ -33,7 +33,18 @@ export async function GET() {
 export async function POST(req) {
   try {
     const { action, payload } = await req.json();
-    const db = global.appDb;
+    let db = global.appDb;
+
+    // Vercel Lambda State Gossip Sync Fix:
+    if (action === 'OVERWRITE_DB') {
+      if (payload.lastModified > db.lastModified) {
+        global.appDb = payload;
+      }
+      return NextResponse.json(global.appDb);
+    }
+
+    // Ensure we update timestamp for every mutation
+    db.lastModified = Date.now();
 
     if (action === 'ADD_PRODUCT') {
       const newProduct = { id: Date.now(), ...payload };

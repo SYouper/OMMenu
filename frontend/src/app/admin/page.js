@@ -11,11 +11,23 @@ export default function AdminDashboard() {
   const [newProduct, setNewProduct] = useState({ name: '', category: '', price: '', desc: '', image: '' });
   const [theme, setTheme] = useState("dark");
   const [settings, setSettings] = useState({ businessName: '', address: '', instagram: '', wifi: '', isOpen: true });
+  const fullDbRef = useRef(null);
 
   const fetchDb = async () => {
     try {
       const res = await fetch('/api/sync');
       const data = await res.json();
+      
+      if (fullDbRef.current && data.lastModified < fullDbRef.current.lastModified) {
+        await fetch('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'OVERWRITE_DB', payload: fullDbRef.current })
+        });
+        return;
+      }
+      fullDbRef.current = data;
+
       setProducts(data.products || []);
       setSettings(data.settings || { isOpen: true });
       setOrders(data.orders || []);
@@ -39,6 +51,7 @@ export default function AdminDashboard() {
         body: JSON.stringify({ action, payload })
       });
       const data = await res.json();
+      fullDbRef.current = data;
       setProducts(data.products || []);
       setSettings(data.settings || { isOpen: true });
       setOrders(data.orders || []);

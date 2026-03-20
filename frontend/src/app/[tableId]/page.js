@@ -17,12 +17,24 @@ export default function CustomerMenu() {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [theme, setTheme] = useState("dark"); // Default to dark for sleek pro look
+  const fullDbRef = useRef(null);
 
   // Sync with API
   const fetchDb = async () => {
     try {
       const res = await fetch('/api/sync');
       const data = await res.json();
+
+      if (fullDbRef.current && data.lastModified < fullDbRef.current.lastModified) {
+        await fetch('/api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'OVERWRITE_DB', payload: fullDbRef.current })
+        });
+        return;
+      }
+      fullDbRef.current = data;
+
       setProducts(data.products || []);
       setSettings(data.settings || { isOpen: true });
     } catch (e) { console.error(e); }
@@ -36,6 +48,7 @@ export default function CustomerMenu() {
         body: JSON.stringify({ action, payload })
       });
       const data = await res.json();
+      fullDbRef.current = data;
       setProducts(data.products || []);
       setSettings(data.settings || { isOpen: true });
     } catch (e) {
