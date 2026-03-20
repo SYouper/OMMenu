@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 export const dynamic = 'force-dynamic';
 
 const defaultDb = {
-  lastModified: Date.now(),
+  lastModified: 0,
   products: [
     { id: 1, name: 'Taze Filtre Kahve', category: 'Kahveler', price: 95, desc: 'Günlük demlenmiş Kolombiya', image: 'https://images.unsplash.com/photo-1544148103-0773bf10d330' },
     { id: 2, name: 'Latte', category: 'Kahveler', price: 120, desc: 'Yumuşak içimli sütlü espresso', image: 'https://images.unsplash.com/photo-1544148103-0773bf10d330' },
